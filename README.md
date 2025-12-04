@@ -13,6 +13,10 @@ ps aux | grep ocr.py
 ```sh
 launchctl load ~/Library/LaunchAgents/com.user.ocrserver.plist
 ```
+取消
+```sh
+launchctl unload ~/Library/LaunchAgents/com.user.ocrserver.plist
+```
 
 ~/Library/LaunchAgents/com.user.ocrserver.plist
 ```
