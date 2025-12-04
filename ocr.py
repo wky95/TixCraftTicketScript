@@ -79,5 +79,4 @@ async def read_captcha(data: dict = Body(...)):
         return {"error": f"OCR 處理失敗: {e}"}
 
 if __name__ == '__main__':
-    # 運行在 0.0.0.0 可以確保所有網絡接口都能訪問
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
