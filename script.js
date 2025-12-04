@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         拓元搶票全自動合體版 (OCR+刷新+選區+自動送出)
+// @name         拓元搶票全自動合體版 (Config版: 智能選區+延遲確認)
 // @namespace    http://tampermonkey.net/
-// @version      2.0
-// @description  整合自動刷新、選區、隱藏售完、勾選同意、OCR 驗證碼填入及自動送出。
-// @author       Combined by Gemini (Original: ChatGPT/You)
+// @version      4.0
+// @description  整合自動刷新、智能選區(價錢+數量-身障)、OCR 驗證碼填入及自動送出。含參數配置區。
+// @author       Combined by Gemini
 // @match        https://tixcraft.com/ticket/*
 // @connect      127.0.0.1
 // @grant        GM_xmlhttpRequest
@@ -13,104 +13,174 @@
 (function() {
     'use strict';
 
+    // =========================================================
+    // ⚙️ 參數設定區 (CONFIG) - 請在此調整數值
+    // =========================================================
+    const CONFIG = {
+        // Python Server 地址
+        API_URL: "http://127.0.0.1:8000/ocr",
+
+        // [區域選擇頁] 找到票後，要「Sleep」多久才點擊？ (毫秒)
+        // 建議: 測試時設 3000 (3秒) 以便肉眼確認；正式搶票時設 0 (極速) 或 100 (安全)
+        AREA_CONFIRM_DELAY: 0,
+
+        // [區域選擇頁] 沒票時的刷新頻率 (毫秒)
+        REFRESH_RATE: 200,
+
+        // [購票頁] OCR 填寫完畢後，要「Sleep」多久才點擊送出？ (毫秒)
+        // 建議: 至少保留 50~100ms 確保 DOM 事件觸發完成
+        SUBMIT_DELAY: 100
+    };
+
     const currentUrl = window.location.href;
-    const API_URL = "http://127.0.0.1:8000/ocr"; // Python Server 地址
 
     // =========================================================
-    // 1. 全域通用功能 (隱藏售完、勾選 Checkbox)
+    // 1. 全域通用功能
     // =========================================================
     function runCommonHelpers() {
-        // 隱藏含有 "已售完" 的 li 區塊
+        // 隱藏售完
         const keyword = "已售完";
         document.querySelectorAll("li").forEach(li => {
             if (li.textContent.includes(keyword)) {
                 li.style.display = "none";
             }
         });
-
-        // 自動勾選所有 checkbox (通常是同意條款)
+        // 勾選 checkbox
         document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             cb.checked = true;
         });
     }
 
     // =========================================================
-    // 2. 區域選擇頁面邏輯 (/ticket/area/...)
-    //    包含: 自動刷新、點擊 select_form_b
+    // 2. 區域選擇頁面邏輯
     // =========================================================
     if (currentUrl.includes('/ticket/area/')) {
-        console.log("📍 偵測到區域選擇頁面，啟動監控與刷新邏輯...");
-
-        // 執行通用清理
+        console.log(`📍 區域選擇頁面監控中... (確認延遲: ${CONFIG.AREA_CONFIRM_DELAY}ms)`);
         runCommonHelpers();
 
         const TARGET_CONTAINER_SELECTOR = 'li.select_form_b';
-        const REFRESH_INTERVAL_MS = 4000; // 沒票時的刷新頻率
 
-        // 嘗試尋找並點擊
-        const targetContainers = document.querySelectorAll(TARGET_CONTAINER_SELECTOR);
-
-        if (targetContainers.length > 0) {
-            // 找到有票區域 (select_form_b)
-            const containerToClick = targetContainers[0];
-            const targetLink = containerToClick.querySelector('a');
-
-            if (targetLink) {
-                console.log(`✅ [AutoClick] 發現可售區域，點擊進入！`);
-                targetLink.click();
-            } else {
-                // 有區塊但沒連結? 異常情況，刷新
-                setTimeout(() => window.location.reload(), REFRESH_INTERVAL_MS);
-            }
-        } else {
-            // 沒找到有票區域
-            console.log(`❌ [AutoClick] 無票，${REFRESH_INTERVAL_MS/1000} 秒後刷新...`);
-            setTimeout(() => window.location.reload(), REFRESH_INTERVAL_MS);
+        // 解析價格
+        function getPrice(element) {
+            const text = element.innerText || element.textContent;
+            const numbers = text.match(/\d+/g);
+            if (!numbers) return 0;
+            const prices = numbers.map(n => parseInt(n)).filter(n => n > 400);
+            return prices.length > 0 ? Math.max(...prices) : 0;
         }
+
+        // 解析剩餘座位
+        function getRemainingSeats(element) {
+            const fontNode = element.querySelector('font[color="#FF0000"], font[color="red"]');
+            if (fontNode) {
+                const match = fontNode.textContent.match(/剩餘\s*(\d+)/);
+                if (match) return parseInt(match[1], 10);
+            }
+            const text = element.innerText || element.textContent;
+            const textMatch = text.match(/剩餘\s*(\d+)/);
+            if (textMatch) return parseInt(textMatch[1], 10);
+            return 0;
+        }
+
+        function makeDecision() {
+            const allContainers = Array.from(document.querySelectorAll(TARGET_CONTAINER_SELECTOR));
+
+            // 排除身障與隱藏區塊
+            const availableContainers = allContainers.filter(li => {
+                const text = li.innerText || li.textContent;
+                const isVisible = li.style.display !== 'none';
+                const isNotDisabledSeat = !text.includes("身障");
+                return isVisible && isNotDisabledSeat;
+            });
+
+            if (availableContainers.length > 0) {
+                // 1. 最高價篩選
+                let maxPrice = 0;
+                availableContainers.forEach(li => {
+                    const p = getPrice(li);
+                    if (p > maxPrice) maxPrice = p;
+                });
+                const expensiveCandidates = availableContainers.filter(li => getPrice(li) === maxPrice);
+
+                // 2. 剩餘張數篩選
+                let maxSeats = -1;
+                expensiveCandidates.forEach(li => {
+                    const s = getRemainingSeats(li);
+                    if (s > maxSeats) maxSeats = s;
+                });
+                const bestCandidates = expensiveCandidates.filter(li => getRemainingSeats(li) === maxSeats);
+
+                // 3. 隨機選一個
+                const finalChoice = bestCandidates[Math.floor(Math.random() * bestCandidates.length)];
+                const targetLink = finalChoice.querySelector('a');
+
+                if (targetLink) {
+                    // 🔥 [Sleep 邏輯] 這裡使用了 CONFIG.AREA_CONFIRM_DELAY
+                    console.log(`✅ [鎖定成功] 價格:$${maxPrice} / 剩餘:${maxSeats} / 延遲:${CONFIG.AREA_CONFIRM_DELAY}ms`);
+
+                    // 視覺提示
+                    targetLink.style.backgroundColor = "#ffeb3b"; // 黃底
+                    targetLink.style.border = "5px solid #f44336"; // 紅框
+                    targetLink.style.color = "#000";
+                    targetLink.style.fontWeight = "bold";
+
+                    if (CONFIG.AREA_CONFIRM_DELAY > 0) {
+                         targetLink.innerText += ` (⏳ ${CONFIG.AREA_CONFIRM_DELAY/1000}秒後點擊...)`;
+                    }
+
+                    // ⏰ 執行 Sleep (延遲點擊)
+                    setTimeout(() => {
+                        console.log("🚀 時間到，執行 Click！");
+                        targetLink.click();
+                    }, CONFIG.AREA_CONFIRM_DELAY);
+
+                } else {
+                    console.warn("⚠️ 異常：選中區塊無連結，刷新重試...");
+                    setTimeout(() => window.location.reload(), CONFIG.REFRESH_RATE);
+                }
+
+            } else {
+                console.log(`❌ 無票 (或只剩身障區)，${CONFIG.REFRESH_RATE}ms 後刷新...`);
+                setTimeout(() => window.location.reload(), CONFIG.REFRESH_RATE);
+            }
+        }
+
+        makeDecision();
     }
 
     // =========================================================
-    // 3. 購票/驗證碼頁面邏輯 (/ticket/ticket/...)
-    //    包含: 票數設為1、OCR 識別、識別後自動送出
+    // 3. 購票/驗證碼頁面邏輯
     // =========================================================
     if (currentUrl.includes('/ticket/ticket/')) {
-        console.log("📍 偵測到購票頁面，啟動 OCR 與表單填寫邏輯...");
+        console.log("📍 購票頁面邏輯啟動...");
 
-        // --- A. 基礎表單處理 ---
-        runCommonHelpers(); // 勾選同意條款
-        // 將所有下拉選單 (票數) 預設選為 1
+        runCommonHelpers();
         document.querySelectorAll("select").forEach(sel => {
             if (sel.value === "0" || sel.value === "") {
                 sel.value = 1;
-                // 觸發 change 事件以防網頁有監聽
                 sel.dispatchEvent(new Event('change', { bubbles: true }));
             }
         });
 
-        // --- B. OCR 與 自動送出邏輯 ---
         const SELECTOR_PAIRS = [
-            // { img: "#captcha-image", input: "#captcha-input", name: "通用模式" },
             { img: "#TicketForm_verifyCode-image", input: "#TicketForm_verifyCode", name: "拓元模式" }
         ];
 
         let isOcrRunning = false;
 
-        // 定義：點擊送出按鈕 (整合自原本的 submit 腳本)
         function clickSubmitButton() {
             const submitBtn = document.querySelector('button.btn.btn-primary.btn-green');
             if (submitBtn) {
-                console.log("🚀 [AutoSubmit] 驗證碼已填入，執行自動送出！");
+                console.log(`🚀 [AutoSubmit] 執行送出 (延遲 ${CONFIG.SUBMIT_DELAY}ms)...`);
                 submitBtn.click();
             } else {
-                console.warn("⚠️ [AutoSubmit] 找不到送出按鈕！");
+                console.warn("⚠️ 找不到送出按鈕！");
             }
         }
 
-        // 定義：OCR 核心
         function solveCaptcha(img, input, mode) {
             if (isOcrRunning) return;
             isOcrRunning = true;
-
             console.log(`[${mode}] 處理驗證碼...`);
 
             const canvas = document.createElement("canvas");
@@ -125,7 +195,7 @@
 
                 GM_xmlhttpRequest({
                     method: "POST",
-                    url: API_URL,
+                    url: CONFIG.API_URL,
                     headers: { "Content-Type": "application/json" },
                     data: JSON.stringify({ image: base64Image }),
                     onload: function(response) {
@@ -135,67 +205,52 @@
                             const code = data.result;
                             console.log(`[${mode}] ✅ 識別結果: ${code}`);
 
-                            // 填入驗證碼
                             input.value = code;
                             input.dispatchEvent(new Event('input', { bubbles: true }));
                             input.dispatchEvent(new Event('change', { bubbles: true }));
 
-                            // *** 關鍵整合：識別成功後立即點擊送出 ***
-                            setTimeout(clickSubmitButton, 100); // 微幅延遲確保填入生效
+                            // 🔥 [Sleep 邏輯] 這裡使用了 CONFIG.SUBMIT_DELAY
+                            setTimeout(clickSubmitButton, CONFIG.SUBMIT_DELAY);
 
                         } else {
-                            console.error(`[${mode}] ❌ 伺服器錯誤:`, response.responseText);
+                            console.error(`[${mode}] ❌ Server Error:`, response.responseText);
                         }
                     },
                     onerror: function(err) {
                         isOcrRunning = false;
-                        console.error(`[${mode}] ❌ 連線錯誤 (請檢查 Python Server):`, err);
+                        console.error(`[${mode}] ❌ 連線錯誤:`, err);
                     }
                 });
             }, 100);
         }
 
-        // 定義：檢查頁面元素
         function checkAndSolve() {
             if (isOcrRunning) return;
-
-            // 如果已經填寫過且不為空，就不重複識別，避免無限迴圈
-            // (除非使用者手動清空)
             for (const pair of SELECTOR_PAIRS) {
                 const img = document.querySelector(pair.img);
                 const input = document.querySelector(pair.input);
-
                 if (img && input) {
-                    // 如果輸入框已經有 4 個字以上，假設已處理，跳過
                     if (input.value && input.value.length >= 4) return;
-
                     if (img.complete && img.naturalWidth > 0) {
                         solveCaptcha(img, input, pair.name);
-
-                        // 綁定點擊刷新重新識別
                         if (!img.hasAttribute('data-ocr-attached')) {
                             img.setAttribute('data-ocr-attached', 'true');
                             img.addEventListener('click', () => {
                                 isOcrRunning = false;
-                                input.value = ""; // 清空輸入框
+                                input.value = "";
                                 setTimeout(() => checkAndSolve(), 500);
                             });
                         }
                     } else {
                         img.onload = () => checkAndSolve();
                     }
-                    break; // 找到一組就停止
+                    break;
                 }
             }
         }
 
-        // 啟動 MutationObserver 監聽 DOM 變化
-        const observer = new MutationObserver(() => {
-            checkAndSolve();
-        });
+        const observer = new MutationObserver(() => checkAndSolve());
         observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-
-        // 首次執行
         checkAndSolve();
     }
 
