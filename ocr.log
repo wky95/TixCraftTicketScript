@@ -1,0 +1,33 @@
+INFO:     Started server process [37941]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-12-04 19:05:19.033 Python[37941:40125467] 2025-12-04 19:05:19.031981 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,10} for output output
+Pillow 兼容性修正已應用。
+ddddocr 模型加載成功。
+✅ 識別成功，結果: wcob
+INFO:     127.0.0.1:49627 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:53:56.227 Python[37941:40125467] 2025-12-04 19:53:56.281680 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,20} for output output
+✅ 識別成功，結果: 6KX3
+INFO:     127.0.0.1:49754 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:55:04.101 Python[37941:40125467] 2025-12-04 19:55:04.157929 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,25} for output output
+✅ 識別成功，結果: 899619
+INFO:     127.0.0.1:49870 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:55:58.988 Python[37941:40125467] 2025-12-04 19:55:59.045676 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,21} for output output
+✅ 識別成功，結果: k66p
+INFO:     127.0.0.1:49943 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:58:03.402 Python[37941:40125467] 2025-12-04 19:58:03.462873 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,10} for output output
+✅ 識別成功，結果: ome
+INFO:     127.0.0.1:49961 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:58:03.423 Python[37941:40125467] 2025-12-04 19:58:03.483522 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,10} for output output
+✅ 識別成功，結果: ome
+INFO:     127.0.0.1:49961 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:58:03.838 Python[37941:40125467] 2025-12-04 19:58:03.898371 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,10} for output output
+✅ 識別成功，結果: ome
+INFO:     127.0.0.1:49961 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:58:06.536 Python[37941:40125467] 2025-12-04 19:58:06.596284 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,10} for output output
+✅ 識別成功，結果: ieqf
+INFO:     127.0.0.1:49961 - "POST /ocr HTTP/1.1" 200 OK
+2025-12-04 19:58:06.554 Python[37941:40125467] 2025-12-04 19:58:06.614335 [W:onnxruntime:, execution_frame.cc:874 VerifyOutputSizes] Expected shape from model of {1,19} does not match actual shape of {1,10} for output output
+✅ 識別成功，結果: ieqf
+INFO:     127.0.0.1:49961 - "POST /ocr HTTP/1.1" 200 OK
