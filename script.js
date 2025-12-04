@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         拓元搶票全自動合體版 (Config版: 智能選區+延遲確認)
+// @name         拓元搶票全自動合體版 (終極配置版+3秒刷新緩衝)
 // @namespace    http://tampermonkey.net/
-// @version      4.0
-// @description  整合自動刷新、智能選區(價錢+數量-身障)、OCR 驗證碼填入及自動送出。含參數配置區。
+// @version      5.1
+// @description  整合自動刷新、智能選區(最貴+最多位+非身障+保底)、OCR 驗證碼填入及自動送出。含沒票時的 3秒緩衝。
 // @author       Combined by Gemini
 // @match        https://tixcraft.com/ticket/*
 // @connect      127.0.0.1
@@ -20,15 +20,16 @@
         // Python Server 地址
         API_URL: "http://127.0.0.1:8000/ocr",
 
-        // [區域選擇頁] 找到票後，要「Sleep」多久才點擊？ (毫秒)
-        // 建議: 測試時設 3000 (3秒) 以便肉眼確認；正式搶票時設 0 (極速) 或 100 (安全)
+        // [區域選擇頁] 鎖定區域後，要「Sleep」多久才點擊？ (毫秒)
+        // 建議: 測試時設 3000 (3秒) 以便肉眼確認；正式搶票時請改回 0 (極速)
         AREA_CONFIRM_DELAY: 0,
 
-        // [區域選擇頁] 沒票時的刷新頻率 (毫秒)
-        REFRESH_RATE: 200,
+        // [區域選擇頁] 🔥 當「完全找不到票」時，要等待多久才刷新？ (毫秒)
+        // 這是您指定的功能：找不到符合的 -> 等 3 秒 -> 刷新
+        NO_TICKET_WAIT_TIME: 3000,
 
         // [購票頁] OCR 填寫完畢後，要「Sleep」多久才點擊送出？ (毫秒)
-        // 建議: 至少保留 50~100ms 確保 DOM 事件觸發完成
+        // 建議: 至少保留 50~100ms
         SUBMIT_DELAY: 100
     };
 
@@ -52,10 +53,10 @@
     }
 
     // =========================================================
-    // 2. 區域選擇頁面邏輯
+    // 2. 區域選擇頁面邏輯 (/ticket/area/...)
     // =========================================================
     if (currentUrl.includes('/ticket/area/')) {
-        console.log(`📍 區域選擇頁面監控中... (確認延遲: ${CONFIG.AREA_CONFIRM_DELAY}ms)`);
+        console.log(`📍 區域選擇頁面監控中...`);
         runCommonHelpers();
 
         const TARGET_CONTAINER_SELECTOR = 'li.select_form_b';
@@ -82,66 +83,103 @@
             return 0;
         }
 
+        // 核心決策邏輯
         function makeDecision() {
             const allContainers = Array.from(document.querySelectorAll(TARGET_CONTAINER_SELECTOR));
 
-            // 排除身障與隱藏區塊
-            const availableContainers = allContainers.filter(li => {
+            // 1. 基礎名單：顯示中 (沒賣完)
+            let validContainers = allContainers.filter(li => li.style.display !== 'none');
+
+            // 2. 優先名單：排除「身障」關鍵字
+            let safeContainers = validContainers.filter(li => {
                 const text = li.innerText || li.textContent;
-                const isVisible = li.style.display !== 'none';
-                const isNotDisabledSeat = !text.includes("身障");
-                return isVisible && isNotDisabledSeat;
+                return !text.includes("身障");
             });
 
-            if (availableContainers.length > 0) {
-                // 1. 最高價篩選
-                let maxPrice = 0;
-                availableContainers.forEach(li => {
-                    const p = getPrice(li);
-                    if (p > maxPrice) maxPrice = p;
-                });
-                const expensiveCandidates = availableContainers.filter(li => getPrice(li) === maxPrice);
+            // 如果排除身障後沒東西了，但還有valid(身障票)，為了保底，勉強用 valid
+            let candidates = safeContainers.length > 0 ? safeContainers : validContainers;
 
-                // 2. 剩餘張數篩選
-                let maxSeats = -1;
-                expensiveCandidates.forEach(li => {
-                    const s = getRemainingSeats(li);
-                    if (s > maxSeats) maxSeats = s;
-                });
-                const bestCandidates = expensiveCandidates.filter(li => getRemainingSeats(li) === maxSeats);
+            if (candidates.length > 0) {
+                // --- 有票可選，進入智能篩選 ---
+                let finalTargets = [];
 
-                // 3. 隨機選一個
-                const finalChoice = bestCandidates[Math.floor(Math.random() * bestCandidates.length)];
+                try {
+                    // A. 找出最高價格
+                    let maxPrice = 0;
+                    candidates.forEach(li => {
+                        const p = getPrice(li);
+                        if (p > maxPrice) maxPrice = p;
+                    });
+
+                    // 篩選高價區
+                    const expensiveList = candidates.filter(li => getPrice(li) === maxPrice);
+
+                    // B. 找出剩餘最多
+                    let maxSeats = -1;
+                    expensiveList.forEach(li => {
+                        const s = getRemainingSeats(li);
+                        if (s > maxSeats) maxSeats = s;
+                    });
+
+                    // 篩選最多位區
+                    finalTargets = expensiveList.filter(li => getRemainingSeats(li) === maxSeats);
+
+                    console.log(`📊 [智能篩選] 價錢$${maxPrice} / 剩餘${maxSeats} / 符合:${finalTargets.length}個`);
+
+                } catch (e) {
+                    console.error("⚠️ 智能篩選錯誤，切換至保底模式", e);
+                    finalTargets = [];
+                }
+
+                // 保底機制：如果篩選失敗，隨機選一個可用的
+                if (finalTargets.length === 0) {
+                    console.warn("⚠️ 啟用保底機制：隨機選擇任一可售區域！");
+                    finalTargets = candidates;
+                }
+
+                // 最終執行
+                const finalChoice = finalTargets[Math.floor(Math.random() * finalTargets.length)];
                 const targetLink = finalChoice.querySelector('a');
 
                 if (targetLink) {
-                    // 🔥 [Sleep 邏輯] 這裡使用了 CONFIG.AREA_CONFIRM_DELAY
-                    console.log(`✅ [鎖定成功] 價格:$${maxPrice} / 剩餘:${maxSeats} / 延遲:${CONFIG.AREA_CONFIRM_DELAY}ms`);
+                    const p = getPrice(finalChoice);
+                    const s = getRemainingSeats(finalChoice);
+
+                    console.log(`✅ [鎖定目標] 價格:$${p} / 剩餘:${s} / 延遲:${CONFIG.AREA_CONFIRM_DELAY}ms`);
 
                     // 視覺提示
-                    targetLink.style.backgroundColor = "#ffeb3b"; // 黃底
-                    targetLink.style.border = "5px solid #f44336"; // 紅框
+                    targetLink.style.backgroundColor = "#ffeb3b";
+                    targetLink.style.border = "5px solid #f44336";
                     targetLink.style.color = "#000";
                     targetLink.style.fontWeight = "bold";
 
                     if (CONFIG.AREA_CONFIRM_DELAY > 0) {
-                         targetLink.innerText += ` (⏳ ${CONFIG.AREA_CONFIRM_DELAY/1000}秒後點擊...)`;
+                         targetLink.innerText += ` (⏳ ${CONFIG.AREA_CONFIRM_DELAY/1000}s...)`;
                     }
 
-                    // ⏰ 執行 Sleep (延遲點擊)
                     setTimeout(() => {
                         console.log("🚀 時間到，執行 Click！");
                         targetLink.click();
                     }, CONFIG.AREA_CONFIRM_DELAY);
 
                 } else {
-                    console.warn("⚠️ 異常：選中區塊無連結，刷新重試...");
-                    setTimeout(() => window.location.reload(), CONFIG.REFRESH_RATE);
+                    // 有區塊但無連結 (極罕見)，快速刷新
+                    setTimeout(() => window.location.reload(), 200);
                 }
 
             } else {
-                console.log(`❌ 無票 (或只剩身障區)，${CONFIG.REFRESH_RATE}ms 後刷新...`);
-                setTimeout(() => window.location.reload(), CONFIG.REFRESH_RATE);
+                // 🔥 [修改重點] 完全找不到符合的票 -> 等待 3 秒 -> 刷新
+                console.log(`❌ 完全無票 (或只剩身障區已排除)，將在 ${CONFIG.NO_TICKET_WAIT_TIME/1000} 秒後刷新...`);
+
+                // 可以在網頁標題或 console 倒數提示
+                let timeLeft = CONFIG.NO_TICKET_WAIT_TIME / 1000;
+                const timer = setInterval(() => {
+                    timeLeft--;
+                    console.log(`... ${timeLeft} 秒後刷新`);
+                    if (timeLeft <= 0) clearInterval(timer);
+                }, 1000);
+
+                setTimeout(() => window.location.reload(), CONFIG.NO_TICKET_WAIT_TIME);
             }
         }
 
@@ -149,7 +187,7 @@
     }
 
     // =========================================================
-    // 3. 購票/驗證碼頁面邏輯
+    // 3. 購票/驗證碼頁面邏輯 (/ticket/ticket/...)
     // =========================================================
     if (currentUrl.includes('/ticket/ticket/')) {
         console.log("📍 購票頁面邏輯啟動...");
@@ -209,7 +247,6 @@
                             input.dispatchEvent(new Event('input', { bubbles: true }));
                             input.dispatchEvent(new Event('change', { bubbles: true }));
 
-                            // 🔥 [Sleep 邏輯] 這裡使用了 CONFIG.SUBMIT_DELAY
                             setTimeout(clickSubmitButton, CONFIG.SUBMIT_DELAY);
 
                         } else {
