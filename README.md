@@ -2,7 +2,7 @@
 A Greasemonkey script and local server API
 
 
-用 Chrome/Brave，首先先下載 [https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=zh-TW](篡改猴)，然後把新增腳本把 script.js 貼上。
+用 Chrome/Brave，首先先下載 [篡改猴](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)，然後把新增腳本把 script.js 貼上。
 
 如果是 Mac，則雙擊 start_ocr.command，第一次使用的情況下要先在終端機輸入 
 ```
