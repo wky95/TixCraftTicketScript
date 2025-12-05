@@ -14,7 +14,9 @@ chmod +x start_ocr.command
 
 ---
 
-從這裡之後對搶票沒有幫助，單純如果想把 python server 寫到 daemon，在 Mac 上可以
+### 從這裡之後對搶票沒有幫助
+
+如果想把 python server 寫到 daemon，在 Mac 上可以
 
 放到背景執行
 ```sh
