@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         拓元搶票全自動合體版 (v8.8 事件驅動極速版)
+// @name         拓元搶票全自動搶票系統
 // @namespace    http://tampermonkey.net/
 // @version      8.8
 // @description  移除固定冷卻時間，改用 img.onload 事件偵測。圖片一載入完成立刻重試，速度最大化。
