@@ -102,7 +102,7 @@
         const div = document.createElement('div');
         div.id = 'ticket-bot-gui';
         const btnClass = CONFIG.BOT_ENABLED ? 'status-on' : 'status-off';
-        const btnText = CONFIG.BOT_ENABLED ? '🟢 機器人：開啟中' : '🔴 機器人：已暫停';
+        const btnText = CONFIG.BOT_ENABLED ? '🟢 腳本：開啟中' : '🔴 腳本：已暫停';
 
         div.innerHTML = `
             <h3 id="gui-toggle">🤖 搶票控制台 v9.2</h3>
@@ -142,8 +142,8 @@
 
                 <div id="bot-status">狀態: 待機中</div>
 
-                <button id="btn-save" class="bot-btn save">💾 儲存設定 (F5生效)</button>
-                <button id="btn-war-mode" class="bot-btn danger">🔥 戰鬥模式 (5秒刷新)</button>
+                <button id="btn-save" class="bot-btn save">💾 儲存設定 (F5)</button>
+                <button id="btn-war-mode" class="bot-btn danger">🔥 正式搶票模式 </button>
                 <button id="btn-toggle-master" class="bot-btn ${btnClass}">${btnText}</button>
             </div>
         `;
@@ -168,11 +168,11 @@
             GM_setValue('BOT_ENABLED', CONFIG.BOT_ENABLED);
             if (CONFIG.BOT_ENABLED) {
                 masterBtn.className = 'bot-btn status-on';
-                masterBtn.innerText = '🟢 機器人：開啟中';
+                masterBtn.innerText = '🟢 腳本：開啟中';
                 updateStatus("🟢 已啟動");
             } else {
                 masterBtn.className = 'bot-btn status-off';
-                masterBtn.innerText = '🔴 機器人：已暫停';
+                masterBtn.innerText = '🔴 腳本：已暫停';
                 updateStatus("⏸️ 已暫停");
             }
         });
@@ -193,7 +193,6 @@
             document.getElementById('cfg-area-delay').value = 0;
             document.getElementById('cfg-wait-time').value = 5000;
             document.getElementById('btn-save').click();
-            updateStatus("🔥 戰鬥模式已開啟！");
         });
     }
 
