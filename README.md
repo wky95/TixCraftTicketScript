@@ -1,6 +1,20 @@
 # TixCraftTicketScript
 A Greasemonkey script and local server API
 
+
+用 Chrome/Brave，首先先下載 [https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=zh-TW](篡改猴)，然後把新增腳本把 script.js 貼上。
+
+如果是 Mac，則雙擊 start_ocr.command，第一次使用的情況下要先在終端機輸入 
+```
+chmod +x start_ocr.command
+```
+如果是 Windos，則雙擊 start_ocr.bat
+
+確保搶票的過程中，視窗沒有關閉
+
+---
+
+如果想把 python server 寫到 daemon
 ```sh
 nohup python3 ocr.py > ocr.log 2>&1 &
 ```
