@@ -119,8 +119,8 @@
                 <div class="bot-row">
                     <label>選票策略:</label>
                     <select id="cfg-strategy">
-                        <option value="default">💎 最貴優先 (預設)</option>
-                        <option value="range">🎯 價格區間 (嚴格)</option>
+                        <option value="default">💎 最貴優先</option>
+                        <option value="range">🎯 價格區間</option>
                     </select>
                 </div>
                 <div id="price-range-box">
