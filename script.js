@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         拓元搶票全自動合體版 (v8.4 極速精簡版)
+// @name         拓元搶票全自動合體版 (v8.8 事件驅動極速版)
 // @namespace    http://tampermonkey.net/
-// @version      8.4
-// @description  移除教學按鈕，介面更清爽。含：總開關、Script Injection 攔截 Alert、強制選票迴圈、自動 OCR。
+// @version      8.8
+// @description  移除固定冷卻時間，改用 img.onload 事件偵測。圖片一載入完成立刻重試，速度最大化。
 // @author       Combined by Gemini
 // @match        https://tixcraft.com/*
 // @connect      127.0.0.1
@@ -17,14 +17,22 @@
     'use strict';
 
     // =========================================================
-    // 🛑 0. 核彈級防禦：直接注入 Script 到頁面頭部 (絕對攔截)
+    // 🛑 0. 核彈級防禦：注入攔截器 + 錯誤信號發射
     // =========================================================
     function injectInterceptor() {
         const script = document.createElement('script');
         script.textContent = `
             (function() {
-                window.alert = function(msg) { console.log('🚫 [攔截 Alert]', msg); return true; };
-                window.confirm = function(msg) { console.log('🚫 [攔截 Confirm]', msg); return true; };
+                window.alert = function(msg) {
+                    console.log('🚫 [攔截 Alert]', msg);
+                    document.documentElement.dataset.botAlertMsg = msg;
+                    document.documentElement.dataset.botAlertTime = Date.now();
+                    return true;
+                };
+                window.confirm = function(msg) {
+                    console.log('🚫 [攔截 Confirm]', msg);
+                    return true;
+                };
             })();
         `;
         (document.head || document.documentElement).appendChild(script);
@@ -33,7 +41,7 @@
     injectInterceptor();
 
     // =========================================================
-    // 🎨 GUI 介面與設定讀取
+    // 🎨 GUI 介面
     // =========================================================
 
     const DEFAULT_CONFIG = {
@@ -83,36 +91,22 @@
             #price-range-box.show { display: block; }
             .range-inputs { display: flex; align-items: center; justify-content: space-between; margin-top: 4px;}
             .range-inputs input { width: 45% !important; }
-
             .bot-btn { width: 100%; border: none; padding: 8px; cursor: pointer; margin-top: 5px; font-weight: bold; border-radius: 4px; transition: 0.2s; color: #fff;}
-            .bot-btn.save { background: #006400; }
-            .bot-btn.save:hover { background: #008000; }
-            .bot-btn.danger { background: #8b0000; }
-            .bot-btn.danger:hover { background: #ff0000; }
-
-            /* 總開關樣式 (縮小並置底) */
-            #btn-toggle-master {
-                margin-top: 10px;
-                padding: 5px;
-                font-size: 11px;
-                border-top: 1px solid #555;
-            }
-            .status-on { background: #008000; }
-            .status-off { background: #555; color: #aaa; }
-
-            #gui-content { display: block; }
-            .collapsed #gui-content { display: none; }
+            .bot-btn.save { background: #006400; } .bot-btn.save:hover { background: #008000; }
+            .bot-btn.danger { background: #8b0000; } .bot-btn.danger:hover { background: #ff0000; }
+            #btn-toggle-master { margin-top: 10px; padding: 5px; font-size: 11px; border-top: 1px solid #555; }
+            .status-on { background: #008000; } .status-off { background: #555; color: #aaa; }
+            #gui-content { display: block; } .collapsed #gui-content { display: none; }
             #bot-status { margin-top: 5px; color: #ff0; text-align: center; font-size: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 5px;}
         `);
 
         const div = document.createElement('div');
         div.id = 'ticket-bot-gui';
-
         const btnClass = CONFIG.BOT_ENABLED ? 'status-on' : 'status-off';
         const btnText = CONFIG.BOT_ENABLED ? '🟢 機器人：開啟中' : '🔴 機器人：已暫停';
 
         div.innerHTML = `
-            <h3 id="gui-toggle">🤖 搶票控制台 v8.4</h3>
+            <h3 id="gui-toggle">🤖 搶票控制台 v8.8</h3>
             <div id="gui-content">
                 <div class="bot-row">
                     <label>預設票數:</label>
@@ -155,21 +149,17 @@
 
                 <button id="btn-save" class="bot-btn save">💾 儲存設定 (F5生效)</button>
                 <button id="btn-war-mode" class="bot-btn danger">🔥 戰鬥模式 (5秒刷新)</button>
-
                 <button id="btn-toggle-master" class="bot-btn ${btnClass}">${btnText}</button>
             </div>
         `;
         document.body.appendChild(div);
 
-        // UI 邏輯
         const strategySelect = document.getElementById('cfg-strategy');
         const rangeBox = document.getElementById('price-range-box');
-        const ticketQtySelect = document.getElementById('cfg-ticket-qty');
-
         strategySelect.value = CONFIG.STRATEGY;
-        ticketQtySelect.value = CONFIG.TICKET_QUANTITY;
-        if (CONFIG.STRATEGY === 'range') rangeBox.classList.add('show');
+        document.getElementById('cfg-ticket-qty').value = CONFIG.TICKET_QUANTITY;
 
+        if (CONFIG.STRATEGY === 'range') rangeBox.classList.add('show');
         strategySelect.addEventListener('change', (e) => {
             if (e.target.value === 'range') rangeBox.classList.add('show');
             else rangeBox.classList.remove('show');
@@ -177,12 +167,10 @@
 
         document.getElementById('gui-toggle').addEventListener('click', () => div.classList.toggle('collapsed'));
 
-        // 總開關
         const masterBtn = document.getElementById('btn-toggle-master');
         masterBtn.addEventListener('click', () => {
             CONFIG.BOT_ENABLED = !CONFIG.BOT_ENABLED;
             GM_setValue('BOT_ENABLED', CONFIG.BOT_ENABLED);
-
             if (CONFIG.BOT_ENABLED) {
                 masterBtn.className = 'bot-btn status-on';
                 masterBtn.innerText = '🟢 機器人：開啟中';
@@ -208,7 +196,6 @@
             setTimeout(() => { btn.innerText = "💾 儲存設定 (F5生效)"; window.location.reload(); }, 500);
         });
 
-        // 戰鬥模式 (無彈窗，直接生效)
         document.getElementById('btn-war-mode').addEventListener('click', () => {
             document.getElementById('cfg-area-delay').value = 0;
             document.getElementById('cfg-wait-time').value = 5000;
@@ -266,7 +253,6 @@
 
             function makeDecision() {
                 if (!CONFIG.BOT_ENABLED) return;
-
                 const allContainers = Array.from(document.querySelectorAll(TARGET_CONTAINER_SELECTOR));
                 let validContainers = allContainers.filter(li => li.style.display !== 'none');
                 let safeContainers = validContainers.filter(li => !li.innerText.includes("身障"));
@@ -338,9 +324,9 @@
 
         let ticketSelected = false;
         const targetQty = CONFIG.TICKET_QUANTITY;
+
         const ticketInterval = setInterval(() => {
             if (!CONFIG.BOT_ENABLED) { clearInterval(ticketInterval); return; }
-
             const selects = document.querySelectorAll("select");
             let anySuccess = false;
             selects.forEach(sel => {
@@ -359,6 +345,7 @@
 
         const SELECTOR_PAIRS = [{ img: "#TicketForm_verifyCode-image", input: "#TicketForm_verifyCode", name: "拓元模式" }];
         let isOcrRunning = false;
+        let lastAlertTime = 0;
 
         function clickSubmitButton() {
             if (!CONFIG.BOT_ENABLED) return;
@@ -371,7 +358,61 @@
             if (!CONFIG.BOT_ENABLED) return;
             const observer = new MutationObserver(() => checkAndSolve());
             observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+            // 監聽 Alert
+            setInterval(() => {
+                const alertTime = parseInt(document.documentElement.dataset.botAlertTime || 0);
+                if (alertTime > lastAlertTime) {
+                    lastAlertTime = alertTime;
+                    const msg = document.documentElement.dataset.botAlertMsg;
+                    console.warn(`⚠️ 偵測到 Alert: ${msg}`);
+                    handleOcrError();
+                }
+            }, 200);
+
             checkAndSolve();
+        }
+
+        function handleOcrError() {
+            // 🔥 v8.8 修正：事件驅動冷卻 (Event-Driven Cooling)
+            // 不再使用固定等待，而是等待圖片 'load' 事件
+            isOcrRunning = true;
+            updateStatus("⚠️ 等待驗證碼自動刷新...");
+
+            const img = document.querySelector("#TicketForm_verifyCode-image");
+            if (img) {
+                // 定義一個單次執行的監聽器
+                const onImageLoad = () => {
+                    console.log("✅ 圖片載入完成 (Event)，立即重試！");
+                    updateStatus("✅ 圖片已更新，重試中...");
+
+                    // 清空輸入框 (防止殘留)
+                    const input = document.querySelector("#TicketForm_verifyCode");
+                    if (input) input.value = "";
+
+                    isOcrRunning = false; // 解鎖
+                    checkAndSolve(); // 立即執行
+
+                    // 移除監聽器 (避免記憶體洩漏)
+                    img.removeEventListener('load', onImageLoad);
+                };
+
+                // 掛載監聽器
+                img.addEventListener('load', onImageLoad);
+
+                // 保底機制：萬一 3 秒內圖片都沒刷新 (例如網路斷了)，強制解鎖重試
+                setTimeout(() => {
+                    if (isOcrRunning) {
+                        console.warn("⚠️ 圖片刷新超時 (3s)，強制重試");
+                        img.removeEventListener('load', onImageLoad);
+                        isOcrRunning = false;
+                        checkAndSolve();
+                    }
+                }, 3000);
+            } else {
+                // 如果找不到圖片元素，只好直接解鎖
+                isOcrRunning = false;
+            }
         }
 
         function solveCaptcha(img, input, mode) {
@@ -390,15 +431,19 @@
                     method: "POST", url: CONFIG.API_URL, headers: { "Content-Type": "application/json" },
                     data: JSON.stringify({ image: base64Image }),
                     onload: function(response) {
-                        isOcrRunning = false;
-                        if (!CONFIG.BOT_ENABLED) return;
+                        if (!CONFIG.BOT_ENABLED) { isOcrRunning = false; return; }
                         if (response.status === 200) {
                             const data = JSON.parse(response.responseText);
                             const code = data.result;
                             console.log(`✅ 結果: ${code}`); updateStatus(`驗證碼: ${code}`);
                             input.value = code; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
                             clickSubmitButton();
-                        } else { console.error(`❌ Error:`, response.responseText); updateStatus("錯誤: 識別失敗"); }
+                            setTimeout(() => { isOcrRunning = false; }, 5000);
+                        } else {
+                            console.error(`❌ Error:`, response.responseText);
+                            updateStatus("錯誤: 識別失敗");
+                            isOcrRunning = false;
+                        }
                     },
                     onerror: function(err) { isOcrRunning = false; console.error(`❌ 連線失敗:`, err); updateStatus("錯誤: 連線失敗"); }
                 });
@@ -418,7 +463,6 @@
                         solveCaptcha(img, input, pair.name);
                         if (!img.hasAttribute('data-ocr-attached')) {
                             img.setAttribute('data-ocr-attached', 'true');
-                            img.addEventListener('click', () => { isOcrRunning = false; input.value = ""; setTimeout(() => checkAndSolve(), 500); });
                         }
                     } else { img.onload = () => checkAndSolve(); }
                     break;
