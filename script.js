@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         拓元搶票全自動搶票系統
+// @name         拓元搶票全自動搶票腳本
 // @namespace    http://tampermonkey.net/
-// @version      8.8
-// @description  移除固定冷卻時間，改用 img.onload 事件偵測。圖片一載入完成立刻重試，速度最大化。
+// @version      9.2
+// @description  移除所有非必要等待設定。完全事件驅動，極速響應。Script Injection 絕對攔截 Alert。
 // @author       Combined by Gemini
 // @match        https://tixcraft.com/*
 // @connect      127.0.0.1
@@ -17,7 +17,7 @@
     'use strict';
 
     // =========================================================
-    // 🛑 0. 核彈級防禦：注入攔截器 + 錯誤信號發射
+    // 🛑 0. 核彈級防禦：直接注入 Script 到頁面頭部 (絕對攔截)
     // =========================================================
     function injectInterceptor() {
         const script = document.createElement('script');
@@ -41,7 +41,7 @@
     injectInterceptor();
 
     // =========================================================
-    // 🎨 GUI 介面
+    // 🎨 GUI 介面與設定讀取
     // =========================================================
 
     const DEFAULT_CONFIG = {
@@ -50,7 +50,7 @@
         AREA_CONFIRM_DELAY: 3000,
         NO_TICKET_WAIT_TIME: 3000,
         ERROR_RETRY_RATE: 200,
-        SUBMIT_DELAY: 100,
+        // OCR_ERROR_DELAY 已移除，完全依賴事件
         STRATEGY: 'default',
         MIN_PRICE: 0,
         MAX_PRICE: 100000,
@@ -63,7 +63,6 @@
         AREA_CONFIRM_DELAY: GM_getValue('AREA_CONFIRM_DELAY', DEFAULT_CONFIG.AREA_CONFIRM_DELAY),
         NO_TICKET_WAIT_TIME: GM_getValue('NO_TICKET_WAIT_TIME', DEFAULT_CONFIG.NO_TICKET_WAIT_TIME),
         ERROR_RETRY_RATE: GM_getValue('ERROR_RETRY_RATE', DEFAULT_CONFIG.ERROR_RETRY_RATE),
-        SUBMIT_DELAY: GM_getValue('SUBMIT_DELAY', DEFAULT_CONFIG.SUBMIT_DELAY),
         STRATEGY: GM_getValue('STRATEGY', DEFAULT_CONFIG.STRATEGY),
         MIN_PRICE: GM_getValue('MIN_PRICE', DEFAULT_CONFIG.MIN_PRICE),
         MAX_PRICE: GM_getValue('MAX_PRICE', DEFAULT_CONFIG.MAX_PRICE),
@@ -106,7 +105,7 @@
         const btnText = CONFIG.BOT_ENABLED ? '🟢 機器人：開啟中' : '🔴 機器人：已暫停';
 
         div.innerHTML = `
-            <h3 id="gui-toggle">🤖 搶票控制台 v8.8</h3>
+            <h3 id="gui-toggle">🤖 搶票控制台 v9.2</h3>
             <div id="gui-content">
                 <div class="bot-row">
                     <label>預設票數:</label>
@@ -139,10 +138,6 @@
                 <div class="bot-row">
                     <label title="找不到票時，要發呆多久才刷新頁面">無票刷新等待:</label>
                     <input type="number" id="cfg-wait-time" value="${CONFIG.NO_TICKET_WAIT_TIME}">
-                </div>
-                <div class="bot-row">
-                    <label title="OCR填寫後等待多久送出">送出延遲(ms):</label>
-                    <input type="number" id="cfg-submit-delay" value="${CONFIG.SUBMIT_DELAY}">
                 </div>
 
                 <div id="bot-status">狀態: 待機中</div>
@@ -189,8 +184,6 @@
             GM_setValue('MAX_PRICE', parseInt(document.getElementById('cfg-max-price').value) || 100000);
             GM_setValue('AREA_CONFIRM_DELAY', parseInt(document.getElementById('cfg-area-delay').value));
             GM_setValue('NO_TICKET_WAIT_TIME', parseInt(document.getElementById('cfg-wait-time').value));
-            GM_setValue('SUBMIT_DELAY', parseInt(document.getElementById('cfg-submit-delay').value));
-
             const btn = document.getElementById('btn-save');
             btn.innerText = "✅ 已儲存";
             setTimeout(() => { btn.innerText = "💾 儲存設定 (F5生效)"; window.location.reload(); }, 500);
@@ -199,7 +192,6 @@
         document.getElementById('btn-war-mode').addEventListener('click', () => {
             document.getElementById('cfg-area-delay').value = 0;
             document.getElementById('cfg-wait-time').value = 5000;
-            document.getElementById('cfg-submit-delay').value = 0;
             document.getElementById('btn-save').click();
             updateStatus("🔥 戰鬥模式已開啟！");
         });
@@ -221,6 +213,7 @@
     function runCommonHelpers() {
         const keyword = "已售完";
         document.querySelectorAll("li").forEach(li => { if (li.textContent.includes(keyword)) li.style.display = "none"; });
+        // 初始勾選 (雖然送出前會再勾一次，但這裡先勾可以讓視覺上安心)
         document.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
     }
 
@@ -349,9 +342,23 @@
 
         function clickSubmitButton() {
             if (!CONFIG.BOT_ENABLED) return;
-            document.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+
+            // 🔥 [關鍵] 送出前同步強制補勾 + 觸發事件
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                if (!cb.checked) {
+                    cb.checked = true;
+                    // 觸發事件以通知網頁框架 (Vue/jQuery)
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    cb.dispatchEvent(new Event('click', { bubbles: true }));
+                }
+            });
+
             const submitBtn = document.querySelector('button.btn.btn-primary.btn-green');
-            if (submitBtn) { updateStatus(`送出中...`); setTimeout(() => submitBtn.click(), CONFIG.SUBMIT_DELAY); }
+            if (submitBtn) {
+                updateStatus(`送出中 (極速)...`);
+                submitBtn.click();
+            }
         }
 
         function startOCR() {
@@ -359,7 +366,6 @@
             const observer = new MutationObserver(() => checkAndSolve());
             observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
-            // 監聽 Alert
             setInterval(() => {
                 const alertTime = parseInt(document.documentElement.dataset.botAlertTime || 0);
                 if (alertTime > lastAlertTime) {
@@ -374,33 +380,21 @@
         }
 
         function handleOcrError() {
-            // 🔥 v8.8 修正：事件驅動冷卻 (Event-Driven Cooling)
-            // 不再使用固定等待，而是等待圖片 'load' 事件
             isOcrRunning = true;
-            updateStatus("⚠️ 等待驗證碼自動刷新...");
+            updateStatus(`⚠️ 等待驗證碼自動刷新...`);
 
             const img = document.querySelector("#TicketForm_verifyCode-image");
             if (img) {
-                // 定義一個單次執行的監聽器
                 const onImageLoad = () => {
                     console.log("✅ 圖片載入完成 (Event)，立即重試！");
                     updateStatus("✅ 圖片已更新，重試中...");
-
-                    // 清空輸入框 (防止殘留)
                     const input = document.querySelector("#TicketForm_verifyCode");
                     if (input) input.value = "";
-
-                    isOcrRunning = false; // 解鎖
-                    checkAndSolve(); // 立即執行
-
-                    // 移除監聽器 (避免記憶體洩漏)
+                    isOcrRunning = false;
+                    checkAndSolve();
                     img.removeEventListener('load', onImageLoad);
                 };
-
-                // 掛載監聽器
                 img.addEventListener('load', onImageLoad);
-
-                // 保底機制：萬一 3 秒內圖片都沒刷新 (例如網路斷了)，強制解鎖重試
                 setTimeout(() => {
                     if (isOcrRunning) {
                         console.warn("⚠️ 圖片刷新超時 (3s)，強制重試");
@@ -410,7 +404,6 @@
                     }
                 }, 3000);
             } else {
-                // 如果找不到圖片元素，只好直接解鎖
                 isOcrRunning = false;
             }
         }
