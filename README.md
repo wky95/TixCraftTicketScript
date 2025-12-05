@@ -28,17 +28,16 @@ ps aux | grep ocr.py
 
  ---
  
-launchctl：
-開始服務
+launchctl：開始服務
 ```sh
 launchctl load ~/Library/LaunchAgents/com.user.ocrserver.plist
 ```
-取消
+launchctl：取消服務
 ```sh
 launchctl unload ~/Library/LaunchAgents/com.user.ocrserver.plist
 ```
 
-~/Library/LaunchAgents/com.user.ocrserver.plist
+新增檔案 ~/Library/LaunchAgents/com.user.ocrserver.plist
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
