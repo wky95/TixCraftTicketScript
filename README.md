@@ -21,12 +21,21 @@ chmod +x start_ocr.command
 nohup python3 ocr.py > ocr.log 2>&1 &
 ```
 
+---
+
 檢查 process
 ```sh
 ps aux | grep ocr.py
 ```
 
- ---
+---
+
+殺掉 process
+```sh
+pkill -f ocr.py
+```
+
+---
  
 launchctl：開始服務
 ```sh
