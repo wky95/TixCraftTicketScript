@@ -1,6 +1,7 @@
 # TixCraftTicketScript
 ## A Greasemonkey script and local server API
 
+#### 本 repo 無不法用途，僅為了學習 javascipt 而開發
 
 1. 確定瀏覽器是 Chrome/Brave
 
@@ -39,7 +40,7 @@ chmod +x start_ocr.command
 
 5. 每次更新完設定都要按儲存設定
 
-6. 戰鬥模式
+6. 按正式搶票模式按鈕將數值改回預設
 
 ---
 
