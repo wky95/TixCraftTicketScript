@@ -44,6 +44,11 @@ chmod +x start_ocr.command
 
 ---
 
+### 搶票技巧
+- 進到節目資訊頁面 `https://tixcraft.com/activity/detail/*` 後，把網址中 detail 改成 game `https://tixcraft.com/activity/game/*`，可以省去點選立即購票按鈕的步驟
+
+---
+
 ### 從這裡之後對搶票沒有幫助
 
 如果想把 python server 寫到 daemon，在 Mac 上可以
